@@ -1,0 +1,62 @@
+from bs4 import BeautifulSoup
+import pandas as pd
+import requests
+import xml.etree.ElementTree as ET
+import smtplib
+from email.MIMEMultipart import MIMEMultipart
+from email.MIMEText import MIMEText
+import sys
+import httplib
+import urllib
+
+# Account I monitor
+michalis = ["GOGROOPIE", "GOGROOPIE_I", "GOGROOPIEVIP", "HOF", "SELFRIDGES"]
+
+#Push config
+user_key = "TODO"
+token = "TODO"
+title = "SSL Expiry"
+
+#Push sending notification
+def pushover(title, message, user_key):
+    conn = httplib.HTTPSConnection("api.pushover.net:443")
+    conn.request("POST", "/1/messages.json",
+                 urllib.urlencode({
+                     "title": title,
+                     "token": token,
+                     "user": user_key,
+                     "message": message,
+                     "html": 1,
+                 }), {"Content-type": "application/x-www-form-urlencoded"})
+    conn.getresponse()
+
+url = "http://platformsupport.emv2.com/l2support/get_ssl_status.php"
+page = requests.get(url)
+soup = BeautifulSoup(page.content, "lxml")
+
+# The followings are required since you have two tbodies.
+for body in soup("tbody"):
+    body.unwrap()
+
+df = pd.read_html(str(soup), header=0, converters={'client_id': str, 'days': int})[0]
+required = df.loc[df['client_name'].isin(michalis)]
+
+#Days to notify
+filtered = required.loc[required['days'] < 7]
+
+body = "The followings will expire in less than 7 Days: \n"
+body += "POD\t Subdomain\t Client\t ExpiryDate \n"
+
+for index, row in filtered.iterrows():
+        body += '\t'.join([row['POD'], row['sub_domain'], row['client_name'], str(row['days'])]) + "\n"
+
+message = body
+#print (body)
+
+#Send notfi if less than 20 days
+if filtered.empty == False:
+    pushover(title, message, user_key)
+    print "Push notif sent"
+else:
+    print "No SSL less than 10 days"
+
